@@ -7,4 +7,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: k8s-duckdns
 repo: github.com/binodluitel/k8s-duckdns
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: luitel.dev
+  group: duckdns
+  kind: DNSRecord
+  path: github.com/binodluitel/k8s-duckdns/api/v1alpha1
+  version: v1alpha1
 version: "3"
