@@ -1,0 +1,22 @@
+apiVersion: duckdns.luitel.dev/v1alpha1
+kind: DNSRecord
+metadata:
+  labels:
+    app.kubernetes.io/name: k8s-duckdns
+    app.kubernetes.io/managed-by: kustomize
+  name: dnsrecord-sample
+spec:
+  domains:
+    - luitel.duckdns.org
+  ipv4Address: "99.99.99.99"
+  clear: false
+  cronJob:
+    schedule: "*/5 * * * *"
+    image: "alpine:3.21.3"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk --no-cache add curl
+        echo "Updating DuckDNS record for luitel.duckdns.org"
+        curl -s "https://www.duckdns.org/update?domains=luitel&token=<PlaceYourDuckDNSTokenHere>"
