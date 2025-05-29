@@ -1,0 +1,9 @@
+[project]
+name = "k8s-duckdns"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "pyyaml>=6.0.2",
+    "requests>=2.32.3",
+]

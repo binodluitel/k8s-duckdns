@@ -10,11 +10,15 @@ rules:
   - events
   verbs:
   - create
-  - delete
-  - patch
-  - update
 - apiGroups:
-  - apps
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - batch
   resources:
   - cronjobs

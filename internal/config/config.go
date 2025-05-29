@@ -30,7 +30,6 @@ type Application struct {
 type DuckDNS struct {
 	Protocol string `envconfig:"protocol" default:"https"`
 	Domain   string `envconfig:"domain" default:"www.duckdns.org"`
-	Token    string `envconfig:"token" default:""`
 	Verbose  bool   `envconfig:"verbose" default:"true"`
 }
 

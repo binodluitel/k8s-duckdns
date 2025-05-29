@@ -223,7 +223,6 @@ func main() {
 	duckDNSClient, err := duckdns.NewClient(
 		cfg.DuckDNS.Protocol,
 		cfg.DuckDNS.Domain,
-		duckdns.SetToken(cfg.DuckDNS.Token),
 		duckdns.EnableVerbosity(cfg.DuckDNS.Verbose),
 	)
 	if err != nil {

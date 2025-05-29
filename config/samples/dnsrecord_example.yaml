@@ -7,16 +7,16 @@ metadata:
   name: dnsrecord-sample
 spec:
   domains:
-    - luitel.duckdns.org
+  - luitel.duckdns.org
   ipv4Address: "99.99.99.99"
   clear: false
   cronJob:
+    # This cron expression means every 5 minutes
+    # If you want to use a different schedule, you can modify the above line.
+    # For example, to run every hour, you could use "0 * * * *".
+    # For more information on cron expressions, see https://crontab.guru/
     schedule: "*/5 * * * *"
-    image: "alpine:3.21.3"
-    command:
-      - /bin/sh
-      - -c
-      - |
-        apk --no-cache add curl
-        echo "Updating DuckDNS record for luitel.duckdns.org"
-        curl -s "https://www.duckdns.org/update?domains=luitel&token=<PlaceYourDuckDNSTokenHere>"
+  secretRef:
+    name: duckdns-secret
+    namespace: default
+    key: token

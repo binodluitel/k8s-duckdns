@@ -61,6 +61,10 @@ type DNSRecordSpec struct {
 	// This cron job will be responsible for updating the DNS record at the specified schedule.
 	// +kubebuilder:validation:Required
 	CronJob CronJob `json:"cronJob"`
+
+	// SecretRef is a reference to the secret that contains the token for DuckDNS.
+	// +kubebuilder:validation:Required
+	SecretRef SecretRef `json:"secretRef"`
 }
 
 // CronJob defines the specifications for a cron job that manages the DNS record.
@@ -68,14 +72,22 @@ type CronJob struct {
 	// Schedule is the cron schedule for the job.
 	// +kubebuilder:validation:Required
 	Schedule string `json:"schedule"`
+}
 
-	// Command is the command to be executed by the cron job.
-	// +kubebuilder:validation:Required
-	Command []string `json:"command"`
+// SecretRef defines a reference to a secret that contains the token for DuckDNS.
+type SecretRef struct {
+	// Namespace is the namespace where the secret is located.
+	// +kubebuilder:validation:Optional
+	// If not specified, the secret is assumed to be in the same namespace as the DNSRecord.
+	Namespace string `json:"namespace,omitempty"`
 
-	// Image is the container image to be used for the cron job.
+	// Name is the name of the secret.
 	// +kubebuilder:validation:Required
-	Image string `json:"image"`
+	Name string `json:"name"`
+
+	// Key is the key in the secret that contains the token.
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
 }
 
 // DNSConditionType defines the status condition types for a DNS entry in DuckDNS.

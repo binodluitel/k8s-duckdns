@@ -52,14 +52,17 @@ const (
 
 	// DNSRecordFinalizer is the finalizer for DNSRecord resources.
 	DNSRecordFinalizer = "finalizer.duckdns.luitel.dev/dnsrecord"
+
+	// CronBackoffLimit is the maximum number of retries for a CronJob before it is considered failed.
+	CronBackoffLimit = 10
 )
 
 // +kubebuilder:rbac:groups=duckdns.luitel.dev,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=duckdns.luitel.dev,resources=dnsrecords/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=duckdns.luitel.dev,resources=dnsrecords/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch;update;delete
-// +kubebuilder:rbac:groups=apps,resources=cronjobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create
 // +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -119,88 +122,8 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.Status.Conditions = []metav1.Condition{}
 	}
 
-	// If the status is Set to "OrlKorrect", we can skip the DNS update process in DuckDNS.
-	// Register the DuckDNS if not already registered.
-	// Then create a CronJob to update the DNS record periodically when the IP changes
-	if !metamachinery.IsStatusConditionTrue(dnsRecord.Status.Conditions, duckdnsv1alpha1.DNSRecordOrlKorrect.String()) {
-		logger.Info("DNSRecord is not OrlKorrect, proceeding with update")
-		domains := r.domainsToString(dnsRecord.Spec.Domains)
-		requestParams := duckdns.Params{
-			Domains: domains,
-			IPv4:    dnsRecord.Spec.IPv4Address,
-			IPv6:    dnsRecord.Spec.IPv6Address,
-			Clear:   dnsRecord.Spec.Clear,
-			Txt:     dnsRecord.Spec.Txt,
-		}
-
-		// Update the DNS record in DuckDNS
-		if err := r.DuckDNSClient.UpdateDNS(ctx, requestParams); err != nil {
-			logger.Error(err, "Failed to update DNS record")
-			r.Recorder.Eventf(
-				dnsRecord,
-				"Warning",
-				"UpdateFailed",
-				"Failed to update DNS record for domains %s: %v",
-				domains,
-				err,
-			)
-
-			dnsRecordCopy := dnsRecord.DeepCopy()
-			metamachinery.SetStatusCondition(&dnsRecordCopy.Status.Conditions, metav1.Condition{
-				Message:            "DNS record update failed",
-				Reason:             "DNSRecordUpdateFailed",
-				Status:             metav1.ConditionFalse,
-				Type:               duckdnsv1alpha1.DNSRecordOrlKorrect.String(),
-				LastTransitionTime: metav1.Now(),
-			})
-
-			if err := r.Status().Update(ctx, dnsRecordCopy); err != nil {
-				logger.Error(err, "Failed to update DNSRecord status")
-				r.Recorder.Eventf(
-					dnsRecord,
-					"Warning",
-					"StatusUpdateFailed",
-					"Failed to update status for DNSRecord %s: %v",
-					dnsRecord.Name,
-					err,
-				)
-				return ctrl.Result{}, fmt.Errorf("failed to update status for DNSRecord, %w", err)
-			}
-			return ctrl.Result{}, nil
-		}
-
-		// If we are here, it means the DNS record update was successful in DuckDNS.
-		// We will update the DNSRecord status to reflect the successful update.
-		dnsRecordCopy := dnsRecord.DeepCopy()
-		dnsRecordCopy.Status.IPv4Address = dnsRecord.Spec.IPv4Address
-		dnsRecordCopy.Status.IPv6Address = dnsRecord.Spec.IPv6Address
-		dnsRecordCopy.Status.Txt = dnsRecord.Spec.Txt
-		metamachinery.SetStatusCondition(&dnsRecordCopy.Status.Conditions, metav1.Condition{
-			Message:            "DNS record update completed successfully",
-			Reason:             "DNSRecordUpdateComplete",
-			Status:             metav1.ConditionTrue,
-			Type:               duckdnsv1alpha1.DNSRecordOrlKorrect.String(),
-			LastTransitionTime: metav1.Now(),
-		})
-
-		if err := r.Status().Update(ctx, dnsRecordCopy); err != nil {
-			logger.Error(err, "Failed to update DNSRecord status")
-			r.Recorder.Eventf(
-				dnsRecord,
-				"Warning",
-				"StatusUpdateFailed",
-				"Failed to update status for DNSRecord %s: %v",
-				dnsRecord.Name,
-				err,
-			)
-			return ctrl.Result{}, fmt.Errorf("failed to update status for DNSRecord, %w", err)
-		}
-
-		return ctrl.Result{}, nil
-	}
-
 	// Set up a CronJob to update the DNS record periodically depending on the configuration.
-	if !metamachinery.IsStatusConditionTrue(dnsRecord.Status.Conditions, duckdnsv1alpha1.DNSCronJobCreated.String()) {
+	if dnsRecord.Status.CronJobRef.Namespace == "" || dnsRecord.Status.CronJobRef.Name == "" {
 		if err := r.setupCronJob(ctx, dnsRecord); err != nil {
 			logger.Error(err, "Failed to set up CronJob for DNSRecord")
 			r.Recorder.Eventf(
@@ -214,6 +137,23 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, fmt.Errorf("failed to set up CronJob for DNSRecord, %w", err)
 		}
 		return ctrl.Result{}, nil
+	}
+
+	dnsRecordCopy := dnsRecord.DeepCopy()
+	dnsRecordCopy.Status.IPv4Address = dnsRecord.Spec.IPv4Address
+	dnsRecordCopy.Status.IPv6Address = dnsRecord.Spec.IPv6Address
+	dnsRecordCopy.Status.Txt = dnsRecord.Spec.Txt
+	if err := r.Status().Update(ctx, dnsRecordCopy); err != nil {
+		logger.Error(err, "Failed to update DNSRecord status")
+		r.Recorder.Eventf(
+			dnsRecord,
+			"Warning",
+			"StatusUpdateFailed",
+			"Failed to update status for DNSRecord %s: %v",
+			dnsRecord.Name,
+			err,
+		)
+		return ctrl.Result{}, fmt.Errorf("failed to update status for DNSRecord %s, %w", dnsRecord.Name, err)
 	}
 
 	return ctrl.Result{}, nil
@@ -328,7 +268,67 @@ func (r *DNSRecordReconciler) setupCronJob(ctx context.Context, dnsRecord *duckd
 	logger.Info("Setting up CronJob for DNSRecord")
 	defer logger.Info("CronJob setup completed for DNSRecord")
 
-	cronJobName := fmt.Sprintf("%s-%s-cronjob", dnsRecord.Namespace, dnsRecord.Name)
+	// Check if the secret exists for the DuckDNS token
+	secret := &corev1.Secret{}
+	secretKey := types.NamespacedName{
+		Name:      dnsRecord.Spec.SecretRef.Name,
+		Namespace: dnsRecord.Spec.SecretRef.Namespace,
+	}
+	if err := r.Get(ctx, secretKey, secret); err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			logger.Error(err, "Failed to get Secret for DNSRecord", "Secret", secretKey)
+			r.Recorder.Eventf(
+				dnsRecord,
+				"Warning",
+				"SecretGetFailed",
+				"Failed to get Secret %s for DNSRecord %s: %v",
+				secretKey.String(),
+				dnsRecord.Name,
+				err,
+			)
+			return fmt.Errorf("failed to get Secret %s for DNSRecord %s, %w", secretKey.String(), dnsRecord.Name, err)
+		}
+		logger.Info("Secret not found, cannot proceed with CronJob setup")
+		r.Recorder.Eventf(
+			dnsRecord,
+			"Warning",
+			"SecretNotFound",
+			"Secret %s not found for DNSRecord %s, cannot proceed with CronJob setup",
+			secretKey.String(),
+			dnsRecord.Name,
+		)
+		return fmt.Errorf("secret %s not found for DNSRecord %s", secretKey.String(), dnsRecord.Name)
+	}
+
+	domains := r.domainsToString(dnsRecord.Spec.Domains)
+	duckDNSUpdateURL, err := r.DuckDNSClient.UpdateURL(duckdns.Params{
+		Domains: domains,
+		IPv4:    dnsRecord.Spec.IPv4Address,
+		IPv6:    dnsRecord.Spec.IPv6Address,
+		Clear:   dnsRecord.Spec.Clear,
+		Txt:     dnsRecord.Spec.Txt,
+		Token: func(secretData map[string][]byte) string {
+			token := string(secretData[dnsRecord.Spec.SecretRef.Key])
+			logger.Info("Token found in secret, proceeding with CronJob setup", "token", token)
+			return token
+		}(secret.Data),
+	})
+
+	logger.V(1).Info("Generated update URL for DuckDNS", "URL", duckDNSUpdateURL)
+
+	if err != nil {
+		logger.Error(err, "Failed to generate update URL for DuckDNS")
+		r.Recorder.Eventf(
+			dnsRecord,
+			"Warning",
+			"UpdateURLGenerationFailed",
+			"Failed to generate update URL for DuckDNS: %v",
+			err,
+		)
+		return fmt.Errorf("failed to generate update URL for DuckDNS, %w", err)
+	}
+
+	cronJobName := fmt.Sprintf("%s-cronjob", dnsRecord.Name)
 	cronJob := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cronJobName,
@@ -336,7 +336,6 @@ func (r *DNSRecordReconciler) setupCronJob(ctx context.Context, dnsRecord *duckd
 		},
 		Spec: batchv1.CronJobSpec{
 			Schedule:                   dnsRecord.Spec.CronJob.Schedule,
-			Suspend:                    proto.Bool(true),
 			FailedJobsHistoryLimit:     proto.Int32(2),
 			SuccessfulJobsHistoryLimit: proto.Int32(2),
 			ConcurrencyPolicy:          batchv1.ForbidConcurrent,
@@ -355,13 +354,18 @@ func (r *DNSRecordReconciler) setupCronJob(ctx context.Context, dnsRecord *duckd
 							RestartPolicy: corev1.RestartPolicyOnFailure,
 							Containers: []corev1.Container{
 								{
-									Name:    "duckdns-updater",
-									Image:   dnsRecord.Spec.CronJob.Image,
-									Command: dnsRecord.Spec.CronJob.Command,
+									Name:  fmt.Sprintf("duckdns-updater-%s", dnsRecord.Name),
+									Image: "alpine:3.21.3",
+									Command: []string{
+										"/bin/sh",
+										"-c",
+										`apk --no-cache add curl && echo "Updating DuckDNS record for ` + domains + `" && curl -s "` + duckDNSUpdateURL + `"`,
+									},
 								},
 							},
 						},
 					},
+					BackoffLimit: proto.Int32(CronBackoffLimit),
 				},
 			},
 		},

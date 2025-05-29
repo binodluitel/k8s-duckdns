@@ -12,7 +12,6 @@ import (
 type Client struct {
 	client  http.Client
 	host    string
-	token   string
 	verbose bool
 }
 
@@ -23,17 +22,6 @@ type ClientOption func(*Client) error
 func EnableVerbosity(enable bool) ClientOption {
 	return func(c *Client) error {
 		c.verbose = enable
-		return nil
-	}
-}
-
-// SetToken sets the authentication token for the client configuration and returns a ClientOption.
-func SetToken(token string) ClientOption {
-	return func(c *Client) error {
-		if token == "" {
-			return fmt.Errorf("token cannot be empty")
-		}
-		c.token = token
 		return nil
 	}
 }
@@ -77,6 +65,9 @@ type Params struct {
 
 	// Txt is an optional parameter to specify a TXT record to be associated with the domain.
 	Txt string `json:"txt,omitempty"`
+
+	// Token is the authentication token for DuckDNS service.
+	Token string `json:"token,omitempty"`
 }
 
 // Response from the requests to DuckDNS service
@@ -102,32 +93,9 @@ func (ddc *Client) updateDNSRecord(ctx context.Context, params Params) (string, 
 	logger := logf.FromContext(ctx)
 	logger.Info("updating DNS record on DuckDNS")
 
-	if params.Domains == "" {
-		return ResponseKO.String(), fmt.Errorf("domain cannot be empty")
-	}
-
-	url := fmt.Sprintf(
-		"%s/update?domains=%s&token=%s&verbose=%t",
-		ddc.host,
-		params.Domains,
-		ddc.token,
-		ddc.verbose,
-	)
-
-	if params.Clear {
-		url += "&clear=true"
-	}
-
-	if params.IPv4 != "" {
-		url += fmt.Sprintf("&ipv4=%s", params.IPv4)
-	}
-
-	if params.IPv6 != "" {
-		url += fmt.Sprintf("&ipv6=%s", params.IPv6)
-	}
-
-	if params.Txt != "" {
-		url += fmt.Sprintf("&txt=%s", params.Txt)
+	url, err := ddc.UpdateURL(params)
+	if err != nil {
+		return ResponseKO.String(), fmt.Errorf("error generating update URL: %w", err)
 	}
 
 	logger.Info("making request to DuckDNS", "url", url)
@@ -165,4 +133,37 @@ func (ddc *Client) updateDNSRecord(ctx context.Context, params Params) (string, 
 func (ddc *Client) UpdateDNS(ctx context.Context, parameters Params) error {
 	_, err := ddc.updateDNSRecord(ctx, parameters)
 	return err
+}
+
+// UpdateURL generates the update URL for DuckDNS with the specified parameters.
+func (ddc *Client) UpdateURL(params Params) (string, error) {
+	if params.Domains == "" {
+		return "", fmt.Errorf("domain cannot be empty")
+	}
+
+	url := fmt.Sprintf(
+		"%s/update?domains=%s&token=%s&verbose=%t",
+		ddc.host,
+		params.Domains,
+		params.Token,
+		ddc.verbose,
+	)
+
+	if params.Clear {
+		url += "&clear=true"
+	}
+
+	if params.IPv4 != "" {
+		url += fmt.Sprintf("&ipv4=%s", params.IPv4)
+	}
+
+	if params.IPv6 != "" {
+		url += fmt.Sprintf("&ipv6=%s", params.IPv6)
+	}
+
+	if params.Txt != "" {
+		url += fmt.Sprintf("&txt=%s", params.Txt)
+	}
+
+	return url, nil
 }
