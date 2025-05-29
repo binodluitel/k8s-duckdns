@@ -11,19 +11,7 @@ const prefix = ""
 
 // Config contains configuration parameters
 type Config struct {
-	Application Application `envconfig:"app"`
-	DuckDNS     DuckDNS     `envconfig:"duckdns"`
-}
-
-// Application configuration
-type Application struct {
-	Name      string `envconfig:"name" default:"api-service"`
-	BuildTime string `envconfig:"build_time"`
-	Version   string `envconfig:"version"`
-	Git       struct {
-		RefName string `envconfig:"ref_name"`
-		RefSHA  string `envconfig:"ref_sha"`
-	} `envconfig:"git"`
+	DuckDNS DuckDNS `envconfig:"duckdns"`
 }
 
 // DuckDNS represents the configuration settings required to interact with the DuckDNS service.
