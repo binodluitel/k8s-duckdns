@@ -33,52 +33,51 @@ import (
 
 var _ = Describe("DNSRecord Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
-
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-		dnsrecord := &duckdnsv1alpha1.DNSRecord{}
+		dnsRecordName := "test-dns-record"
+		namespace := testutils.Namespace{}
+		namespacedName := types.NamespacedName{}
+		dnsRecord := &duckdnsv1alpha1.DNSRecord{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind DNSRecord")
-			err := k8sClient.Get(ctx, typeNamespacedName, dnsrecord)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &duckdnsv1alpha1.DNSRecord{
+			ns, err := namespace.Create(ctx, k8sClient)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+			namespacedName = types.NamespacedName{Name: dnsRecordName, Namespace: ns.Name}
+			if err := k8sClient.Get(ctx, namespacedName, dnsRecord); err != nil && errors.IsNotFound(err) {
+				dnsRecord = &duckdnsv1alpha1.DNSRecord{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
+						Name:      namespacedName.Name,
+						Namespace: namespacedName.Namespace,
 					},
 					Spec: duckdnsv1alpha1.DNSRecordSpec{
 						Domains: []string{"example.com"},
 					},
 				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &duckdnsv1alpha1.DNSRecord{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			dnsRecord = &duckdnsv1alpha1.DNSRecord{}
+			err := k8sClient.Get(ctx, namespacedName, dnsRecord)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Cleanup the specific resource instance DNSRecord")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, dnsRecord)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &DNSRecordReconciler{
+			dnsRecordReconciler := &DNSRecordReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
-				Recorder: testutils.NewFakeRecorder(10),
+				Recorder: testutils.NewFakeRecorder(10, false),
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+			_, err := dnsRecordReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: namespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.

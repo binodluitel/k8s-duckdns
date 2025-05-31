@@ -15,16 +15,17 @@ import (
 type FakeRecorder struct {
 	bufferSize int
 	*sync.Mutex
-	Events        map[string]chan string
-	IncludeObject bool
+	events     map[string]chan string
+	dumpObject bool
 }
 
-// NewFakeRecorder creates a fake event recorder with an event channel with buffer of given size.
-func NewFakeRecorder(bufferSize int) *FakeRecorder {
+// NewFakeRecorder creates a fake event recorder with an event channel with a buffer of a given size.
+func NewFakeRecorder(bufferSize int, dumpObject bool) *FakeRecorder {
 	return &FakeRecorder{
 		Mutex:      &sync.Mutex{},
 		bufferSize: bufferSize,
-		Events:     make(map[string]chan string),
+		events:     make(map[string]chan string),
+		dumpObject: dumpObject,
 	}
 }
 
@@ -39,7 +40,7 @@ func (f FakeRecorder) Event(object runtime.Object, eventType, reason, message st
 		eventType,
 		reason,
 		message,
-		f.objectToString(object, f.IncludeObject),
+		f.objectToString(object),
 	)
 }
 
@@ -51,7 +52,6 @@ func (f FakeRecorder) Eventf(
 ) {
 	cliObject, ok := object.(client.Object)
 	if !ok {
-		// Skip non-client objects
 		return
 	}
 	f.generateEvent(
@@ -60,7 +60,7 @@ func (f FakeRecorder) Eventf(
 		eventType,
 		reason,
 		fmt.Sprintf(messageFmt, args...),
-		f.objectToString(object, f.IncludeObject))
+		f.objectToString(object))
 }
 
 func (f FakeRecorder) AnnotatedEventf(
@@ -77,17 +77,17 @@ func (f FakeRecorder) AnnotatedEventf(
 func (f FakeRecorder) generateEvent(namespace string) chan string {
 	f.Lock()
 	defer f.Unlock()
-	event, ok := f.Events[namespace]
+	event, ok := f.events[namespace]
 	if !ok {
 		event = make(chan string, f.bufferSize)
-		f.Events[namespace] = event
+		f.events[namespace] = event
 	}
 	return event
 }
 
-func (f FakeRecorder) objectToString(object runtime.Object, includeObject bool) string {
-	if !includeObject {
-		return ""
+func (f FakeRecorder) objectToString(object runtime.Object) string {
+	if !f.dumpObject {
+		return ">>> Object not included in event"
 	}
 	return spew.Sdump(object)
 }
