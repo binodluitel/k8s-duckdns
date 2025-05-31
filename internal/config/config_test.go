@@ -55,7 +55,7 @@ var _ = Describe("Config", func() {
 
 	It("loads default values", func() {
 		cfg, err := Get()
-		Expect(err).To(BeNil())
+		Expect(err).To(Not(HaveOccurred()))
 		Expect(cfg.DuckDNS.Protocol).To(Equal("https"))
 		Expect(cfg.DuckDNS.Domain).To(Equal("www.duckdns.org"))
 		Expect(cfg.DuckDNS.Verbose).To(BeTrue())
@@ -67,7 +67,7 @@ var _ = Describe("Config", func() {
 		Expect(os.Setenv("DUCKDNS_VERBOSE", "false")).To(Succeed())
 		resetConfig()
 		cfg, err := Get()
-		Expect(err).To(BeNil())
+		Expect(err).To(Not(HaveOccurred()))
 		Expect(cfg.DuckDNS.Protocol).To(Equal("http"))
 		Expect(cfg.DuckDNS.Domain).To(Equal("custom.duckdns.org"))
 		Expect(cfg.DuckDNS.Verbose).To(BeFalse())
@@ -76,8 +76,8 @@ var _ = Describe("Config", func() {
 	It("returns the same instance (singleton)", func() {
 		cfg1, err1 := Get()
 		cfg2, err2 := Get()
-		Expect(err1).To(BeNil())
-		Expect(err2).To(BeNil())
+		Expect(err1).To(Not(HaveOccurred()))
+		Expect(err2).To(Not(HaveOccurred()))
 		Expect(cfg1).To(BeIdenticalTo(cfg2))
 	})
 

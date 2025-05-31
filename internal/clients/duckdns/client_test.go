@@ -19,7 +19,7 @@ var _ = Describe("Client", func() {
 
 	BeforeEach(func() {
 		client, err = NewClient("https", "duckdns.org")
-		Expect(err).To(BeNil())
+		Expect(err).To(Not(HaveOccurred()))
 	})
 
 	Describe("UpdateURL", func() {
@@ -28,7 +28,7 @@ var _ = Describe("Client", func() {
 				Domains: "testdomain",
 				Token:   "mytoken",
 			})
-			Expect(err).To(BeNil())
+			Expect(err).To(Not(HaveOccurred()))
 			Expect(url).To(Equal("https://duckdns.org/update?domains=testdomain&token=mytoken&verbose=false"))
 		})
 
@@ -39,7 +39,7 @@ var _ = Describe("Client", func() {
 				Clear:   true,
 				IPv4:    "1.2.3.4",
 			})
-			Expect(err).To(BeNil())
+			Expect(err).To(Not(HaveOccurred()))
 			Expect(url).To(Equal("https://duckdns.org/update?domains=testdomain&token=mytoken&verbose=false&clear=true&ipv4=1.2.3.4"))
 		})
 
@@ -50,7 +50,7 @@ var _ = Describe("Client", func() {
 				IPv6:    "abcd::1",
 				Txt:     "sometxt",
 			})
-			Expect(err).To(BeNil())
+			Expect(err).To(Not(HaveOccurred()))
 			Expect(url).To(Equal("https://duckdns.org/update?domains=testdomain&token=mytoken&verbose=false&ipv6=abcd::1&txt=sometxt"))
 		})
 
