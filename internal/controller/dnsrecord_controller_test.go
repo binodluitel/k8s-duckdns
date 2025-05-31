@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	duckdnsv1alpha1 "github.com/binodluitel/k8s-duckdns/api/v1alpha1"
+	testutils "github.com/binodluitel/k8s-duckdns/test/utils"
 )
 
 var _ = Describe("DNSRecord Controller", func() {
@@ -51,7 +52,9 @@ var _ = Describe("DNSRecord Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: duckdnsv1alpha1.DNSRecordSpec{
+						Domains: []string{"example.com"},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -69,8 +72,9 @@ var _ = Describe("DNSRecord Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &DNSRecordReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: testutils.NewFakeRecorder(10),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
