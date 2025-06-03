@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!./.venv/bin/python
 
 import argparse
 import base64
@@ -7,110 +7,163 @@ import requests
 
 def main():
     parser = argparse.ArgumentParser(description="DuckDNS CLI")
-    subparsers = parser.add_subparsers(dest='command', required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    default_dns_record_name = 'duckdns-record'
-    default_dns_record_namespace = 'default'
-    default_secret_name = 'duckdns-secret'
-    default_secret_namespace = 'default'
+    default_dns_record_name = "duckdns-record"
+    default_dns_record_namespace = "default"
+    default_secret_name = "duckdns-secret"
+    default_secret_namespace = "default"
 
-    dns_record_parser = subparsers.add_parser('dns-record', help='Generate a DNSRecord custom resource YAML')
-    dns_record_parser.add_argument('--domains', nargs='+', required=True, help='List of domains (space separated)')
-    dns_record_parser.add_argument('--namespace', default=default_dns_record_namespace, help='Kubernetes namespace for the DNSRecord')
-    dns_record_parser.add_argument('--name', default=default_dns_record_name, help='Kubernetes name for the DNSRecord')
-    dns_record_parser.add_argument('--ipv4', default='', help='IPv4 address (optional)')
-    dns_record_parser.add_argument('--ipv6', default='', help='Use IPv6 address (optional)')
-    dns_record_parser.add_argument('--clear', action='store_true', help='Set clear to true (default: false)')
-    dns_record_parser.add_argument('--schedule', default='*/5 * * * *', help='Cron schedule (default: every 5 minutes)')
-    dns_record_parser.add_argument('--secret-namespace', default=default_dns_record_namespace, help='Kubernetes namespace for the secret that contains the auth token')
-    dns_record_parser.add_argument('--secret-name', default=default_secret_name, help='Kubernetes name for the secret that contains the auth token')
-    dns_record_parser.add_argument('--secret-key', default='token', help='Secret key to retrie the token data from')
-    dns_record_parser.add_argument('--output', default='dns-record.yaml', help='Output YAML file name')
-    dns_record_secret_parser = subparsers.add_parser('secret', help='Generate a secret YAML for storing auth token to DuckDNS')
-    dns_record_secret_parser.add_argument('--namespace', default=default_secret_namespace, help='Kubernetes namespace for the secret')
-    dns_record_secret_parser.add_argument('--name', default=default_secret_name, help='Kubernetes name for the secret')
-    dns_record_secret_parser.add_argument('--secret-key', default='token', help='Secret key for token retrieval')
-    dns_record_secret_parser.add_argument('--token', required=True, help='DuckDNS token')
-    dns_record_secret_parser.add_argument('--output', default='dns-record-secret.yaml', help='Output YAML file name for the secret')
+    dns_record_parser = subparsers.add_parser(
+        "dns-record", help="Generate a DNSRecord custom resource YAML"
+    )
+    dns_record_parser.add_argument(
+        "--domains", nargs="+", required=True, help="List of domains (space separated)"
+    )
+    dns_record_parser.add_argument(
+        "--namespace",
+        default=default_dns_record_namespace,
+        help="Kubernetes namespace for the DNSRecord",
+    )
+    dns_record_parser.add_argument(
+        "--name",
+        default=default_dns_record_name,
+        help="Kubernetes name for the DNSRecord",
+    )
+    dns_record_parser.add_argument("--ipv4", default="", help="IPv4 address (optional)")
+    dns_record_parser.add_argument(
+        "--ipv6", default="", help="Use IPv6 address (optional)"
+    )
+    dns_record_parser.add_argument(
+        "--clear", action="store_true", help="Set clear to true (default: false)"
+    )
+    dns_record_parser.add_argument(
+        "--schedule",
+        default="*/5 * * * *",
+        help="Cron schedule (default: every 5 minutes)",
+    )
+    dns_record_parser.add_argument(
+        "--secret-namespace",
+        default=default_dns_record_namespace,
+        help="Kubernetes namespace for the secret that contains the auth token",
+    )
+    dns_record_parser.add_argument(
+        "--secret-name",
+        default=default_secret_name,
+        help="Kubernetes name for the secret that contains the auth token",
+    )
+    dns_record_parser.add_argument(
+        "--secret-key", default="token", help="Secret key to retrie the token data from"
+    )
+    dns_record_parser.add_argument(
+        "--output", default="dns-record.yaml", help="Output YAML file name"
+    )
+    dns_record_secret_parser = subparsers.add_parser(
+        "secret", help="Generate a secret YAML for storing auth token to DuckDNS"
+    )
+    dns_record_secret_parser.add_argument(
+        "--namespace",
+        default=default_secret_namespace,
+        help="Kubernetes namespace for the secret",
+    )
+    dns_record_secret_parser.add_argument(
+        "--name", default=default_secret_name, help="Kubernetes name for the secret"
+    )
+    dns_record_secret_parser.add_argument(
+        "--secret-key", default="token", help="Secret key for token retrieval"
+    )
+    dns_record_secret_parser.add_argument(
+        "--token", required=True, help="DuckDNS token"
+    )
+    dns_record_secret_parser.add_argument(
+        "--output",
+        default="dns-record-secret.yaml",
+        help="Output YAML file name for the secret",
+    )
 
     args = parser.parse_args()
 
-    if args.command == 'dns-record':
+    if args.command == "dns-record":
         generate_dns_record(args)
-    elif args.command == 'secret':
+    elif args.command == "secret":
         generate_dns_record_secret(args)
+
 
 def generate_dns_record(args):
     ipv4 = args.ipv4 if args.ipv4 else my_ipv4()
-    ipv6 = my_ipv6() if args.ipv6 else ''
+    ipv6 = my_ipv6() if args.ipv6 else ""
 
     dns_record = {
-        'apiVersion': 'duckdns.luitel.dev/v1alpha1',
-        'kind': 'DNSRecord',
-        'metadata': {
-            'name': args.name if hasattr(args, 'name') else '',
-            'namespace': args.namespace if hasattr(args, 'namespace') else ''
+        "apiVersion": "duckdns.luitel.dev/v1alpha1",
+        "kind": "DNSRecord",
+        "metadata": {
+            "name": args.name if hasattr(args, "name") else "",
+            "namespace": args.namespace if hasattr(args, "namespace") else "",
         },
-        'spec': {
-            'domains': args.domains,
-            'ipv4': ipv4,
-            'ipv6': ipv6,
-            'clear': args.clear,
-            'cronJob': {
-                'schedule': args.schedule,
+        "spec": {
+            "domains": args.domains,
+            "ipv4Address": ipv4,
+            "clear": args.clear,
+            "cronJob": {
+                "schedule": args.schedule,
             },
-            'secretRef': {
-                'name': args.name if hasattr(args, 'name') else '',
-                'namespace': args.namespace if hasattr(args, 'namespace') else '',
-                'key': args.secret_key if hasattr(args, 'secret_key') else ''
-            }
-        }
+            "secretRef": {
+                "name": args.secret_name if hasattr(args, "secret_name") else "",
+                "namespace": args.secret_namespace if hasattr(args, "secret_namespace") else "",
+                "key": args.secret_key if hasattr(args, "secret_key") else "",
+            },
+        },
     }
 
-    with open(args.output, 'w') as f:
+    if ipv6:
+        dns_record["spec"]["ipv6Address"] = ipv6
+
+    with open(args.output, "w") as f:
         yaml.dump(dns_record, f, default_flow_style=False)
     print(f"DNSRecord YAML generated: {args.output}")
 
+
 def generate_dns_record_secret(args):
     dns_record_secret = {
-        'apiVersion': 'v1',
-        'kind': 'Secret',
-        'metadata': {
-            'name': args.name if hasattr(args, 'name') else '',
-            'namespace': args.namespace if hasattr(args, 'namespace') else ''
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": args.name if hasattr(args, "name") else "",
+            "namespace": args.namespace if hasattr(args, "namespace") else "",
         },
-        'type': 'Opaque',
-        'data': {
-            args.secret_key: base64.b64encode(args.token.encode()).decode()
-        }
+        "type": "Opaque",
+        "data": {args.secret_key: base64.b64encode(args.token.encode()).decode()},
     }
 
-    with open(args.output, 'w') as f:
+    with open(args.output, "w") as f:
         yaml.dump(dns_record_secret, f, default_flow_style=False)
     print(f"DNSRecord Secret YAML generated: {args.output}")
 
+
 def my_ipv4():
     try:
-        response = requests.get('https://api.ipify.org?format=json')
+        response = requests.get("https://api.ipify.org?format=json")
         response.raise_for_status()
-        return response.json().get('ip', '')
+        return response.json().get("ip", "")
     except requests.RequestException as e:
         print(f"Error fetching public IPv4 address: {e}")
-        return ''
+        return ""
+
 
 def my_ipv6():
     try:
-        response = requests.get('https://api64.ipify.org?format=json')
+        response = requests.get("https://api64.ipify.org?format=json")
         response.raise_for_status()
-        ipv6 = response.json().get('ip', '')
-        if ':' in ipv6 and len(ipv6.split(':')) >= 3:
+        ipv6 = response.json().get("ip", "")
+        if ":" in ipv6 and len(ipv6.split(":")) >= 3:
             return ipv6
         else:
             print(f"Invalid IPv6 address format received from API: {ipv6}")
-            return ''
+            return ""
     except requests.RequestException as e:
         print(f"Error fetching public IPv6 address: {e}")
-        return ''
+        return ""
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
