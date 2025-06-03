@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: website-ingress
+  labels:
+    name: website
+  annotations:
+    cert-manager.io/cluster-issuer: lets-encrypt-prod
+    nginx.ingress.kubernetes.io/limit-connections: "1000"
+    nginx.ingress.kubernetes.io/limit-rps: "1000"
+    nginx.ingress.kubernetes.io/limit-rpm: "60000"
+    nginx.ingress.kubernetes.io/proxy-body-size: 5m
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: website
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - "domain.duckdns.org"
+      secretName: website-ingress-cert
