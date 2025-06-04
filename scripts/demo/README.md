@@ -233,6 +233,16 @@ NAME                     SCHEDULE      TIMEZONE   SUSPEND   ACTIVE   LAST SCHEDU
 duckdns-record-cronjob   */5 * * * *   <none>     False     0        <none>          28s
 ```
 
-## The End
+## Voila!
 
 You've got a fully functional static website served over HTTPS using DuckDNS and Kubernetes.
+
+## Clean up
+
+To clean up the resources created during the demo, delete the kind cluster.
+
+```shell
+kind delete cluster --name duckdns
+```
+
+Then delete the domain name from DuckDNS.
