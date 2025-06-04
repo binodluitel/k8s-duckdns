@@ -2,6 +2,8 @@
 
 This demo will guide you through setting up a static website served over HTTPS using DuckDNS and Kubernetes.
 
+**Note:** This document assumes you are running commands from the root of the `k8s-duckdns` repository.
+
 ## Prepare the environment
 
 ### Create a kind cluster
