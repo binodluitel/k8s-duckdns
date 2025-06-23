@@ -38,20 +38,20 @@ type DNSRecordSpec struct {
 	// this only works for IPv4 addresses.
 	// +kubebuilder:validation:Pattern=`^(\d{1,3}\.){3}\d{1,3}$`
 	// +kubebuilder:validation:Optional
-	IPv4Address string `json:"ipv4Address,omitempty"`
+	IPv4Address string `json:"ipv4Address"`
 
 	// IPv6Address is the IPv6 address to be associated with the domains.
 	// You can put either an IPv4 or an IPv6 address in the ip parameter.
 	// If the IP address isn't specified to DuckDNS, then it will NOT be detected -
 	// and will be left unset.
-	// +kubebuilder:validation:Pattern=`^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$`
+	// +kubebuilder:validation:Pattern=`^((([0-9A-Fa-f]{1,4}:){1,6}:)|(([0-9A-Fa-f]{1,4}:){7}))([0-9A-Fa-f]{1,4})$`
 	// +kubebuilder:validation:Optional
 	IPv6Address string `json:"ipv6Address,omitempty"`
 
-	// Clear is a flag to clear the DNS records.
-	// If set to true, the DNS records will be cleared for both IPv4 and IPv6 addresses.
+	// AutoUpdateIPv6Address specifies whether the IPv6 address should be auto-updated for the associated DNS records.
+	// If set to true, the IPv6 address will be automatically updated.
 	// +kubebuilder:validation:Optional
-	Clear bool `json:"clear,omitempty"`
+	AutoUpdateIPv6Address bool `json:"autoUpdateIPv6Address"`
 
 	// Txt is an optional parameter to specify a TXT record to be associated with the domain.
 	// +kubebuilder:validation:Optional
@@ -72,6 +72,14 @@ type CronJob struct {
 	// Schedule is the cron schedule for the job.
 	// +kubebuilder:validation:Required
 	Schedule string `json:"schedule"`
+
+	// Image is the Docker image to be used for the cron job.
+	// +kubebuilder:validation:Required
+	Image string `json:"image"`
+
+	// ImagePullPolicy is the image pull policy for the cron job.
+	// +kubebuilder:validation:Optional
+	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
 }
 
 // SecretRef defines a reference to a secret that contains the token for DuckDNS.
@@ -89,6 +97,9 @@ type SecretRef struct {
 	// +kubebuilder:validation:Required
 	Key string `json:"key"`
 }
+
+// AnnotationClear is the annotation key used to specify whether to clear the DNS records.
+const AnnotationClear = "duckdns.luitel.dev/clear"
 
 // DNSConditionType defines the status condition types for a DNS entry in DuckDNS.
 type DNSConditionType string

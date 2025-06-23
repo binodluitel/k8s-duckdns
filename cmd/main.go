@@ -22,13 +22,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/binodluitel/k8s-duckdns/internal/clients/duckdns"
-	"github.com/binodluitel/k8s-duckdns/internal/config"
-
 	// Import all Kubernetes client auth plugins (e.g., Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	duckdnsv1alpha1 "github.com/binodluitel/k8s-duckdns/api/v1alpha1"
+	"github.com/binodluitel/k8s-duckdns/internal/config"
+	"github.com/binodluitel/k8s-duckdns/internal/controller"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -39,9 +39,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
-	duckdnsv1alpha1 "github.com/binodluitel/k8s-duckdns/api/v1alpha1"
-	"github.com/binodluitel/k8s-duckdns/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -98,7 +95,7 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	// Initialize the configuration
-	cfg, err := config.Get()
+	_, err := config.Get()
 	if err != nil {
 		setupLog.Error(err, "unable to load configuration")
 		os.Exit(1)
@@ -219,25 +216,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set up the DuckDNS client for the controller
-	duckDNSClient, err := duckdns.NewClient(
-		cfg.DuckDNS.Protocol,
-		cfg.DuckDNS.Domain,
-		duckdns.EnableVerbosity(cfg.DuckDNS.Verbose),
-	)
-	if err != nil {
-		setupLog.Error(err, "unable to create DuckDNS client")
-		os.Exit(1)
-	}
-
 	if err = (&controller.DNSRecordReconciler{
 		ControllerName: controller.DNSRecordControllerName,
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),
-		DuckDNSClient:  duckDNSClient,
 		Recorder:       mgr.GetEventRecorderFor(controller.DNSRecordControllerName),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
+		setupLog.Error(
+			err,
+			"unable to create controller",
+			"controller",
+			controller.DNSRecordControllerName,
+		)
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

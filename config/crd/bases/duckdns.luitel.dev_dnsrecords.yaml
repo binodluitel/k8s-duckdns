@@ -39,20 +39,29 @@ spec:
           spec:
             description: DNSRecordSpec defines the desired state of DNSRecord.
             properties:
-              clear:
+              autoUpdateIPv6Address:
                 description: |-
-                  Clear is a flag to clear the DNS records.
-                  If set to true, the DNS records will be cleared for both IPv4 and IPv6 addresses.
+                  AutoUpdateIPv6Address specifies whether the IPv6 address should be auto-updated for the associated DNS records.
+                  If set to true, the IPv6 address will be automatically updated.
                 type: boolean
               cronJob:
                 description: |-
                   CronJob specifications for the DNS record.
                   This cron job will be responsible for updating the DNS record at the specified schedule.
                 properties:
+                  image:
+                    description: Image is the Docker image to be used for the cron
+                      job.
+                    type: string
+                  imagePullPolicy:
+                    description: ImagePullPolicy is the image pull policy for the
+                      cron job.
+                    type: string
                   schedule:
                     description: Schedule is the cron schedule for the job.
                     type: string
                 required:
+                - image
                 - schedule
                 type: object
               domains:
@@ -74,7 +83,7 @@ spec:
                   You can put either an IPv4 or an IPv6 address in the ip parameter.
                   If the IP address isn't specified to DuckDNS, then it will NOT be detected -
                   and will be left unset.
-                pattern: ^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$
+                pattern: ^((([0-9A-Fa-f]{1,4}:){1,6}:)|(([0-9A-Fa-f]{1,4}:){7}))([0-9A-Fa-f]{1,4})$
                 type: string
               secretRef:
                 description: SecretRef is a reference to the secret that contains

@@ -20,21 +20,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/binodluitel/k8s-duckdns/internal/clients/duckdns"
-	"github.com/gogo/protobuf/proto"
+	duckdnsv1alpha1 "github.com/binodluitel/k8s-duckdns/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
 	metamachinery "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-
-	duckdnsv1alpha1 "github.com/binodluitel/k8s-duckdns/api/v1alpha1"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // DNSRecordReconciler reconciles a DNSRecord object
@@ -42,7 +37,6 @@ type DNSRecordReconciler struct {
 	client.Client
 	Scheme         *runtime.Scheme
 	ControllerName string
-	DuckDNSClient  *duckdns.Client
 	Recorder       record.EventRecorder
 }
 
@@ -62,6 +56,9 @@ const (
 // +kubebuilder:rbac:groups=duckdns.luitel.dev,resources=dnsrecords/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=events,verbs=create
 // +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=create;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -118,10 +115,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	if dnsRecord.Status.Conditions == nil {
-		dnsRecord.Status.Conditions = []metav1.Condition{}
-	}
-
 	// Set up a CronJob to update the DNS record periodically depending on the configuration.
 	if dnsRecord.Status.CronJobRef.Namespace == "" || dnsRecord.Status.CronJobRef.Name == "" {
 		if err := r.setupCronJob(ctx, dnsRecord); err != nil {
@@ -139,23 +132,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	dnsRecordCopy := dnsRecord.DeepCopy()
-	dnsRecordCopy.Status.IPv4Address = dnsRecord.Spec.IPv4Address
-	dnsRecordCopy.Status.IPv6Address = dnsRecord.Spec.IPv6Address
-	dnsRecordCopy.Status.Txt = dnsRecord.Spec.Txt
-	if err := r.Status().Update(ctx, dnsRecordCopy); err != nil {
-		logger.Error(err, "Failed to update DNSRecord status")
-		r.Recorder.Eventf(
-			dnsRecord,
-			"Warning",
-			"StatusUpdateFailed",
-			"Failed to update status for DNSRecord %s: %v",
-			dnsRecord.Name,
-			err,
-		)
-		return ctrl.Result{}, fmt.Errorf("failed to update status for DNSRecord %s, %w", dnsRecord.Name, err)
-	}
-
 	return ctrl.Result{}, nil
 }
 
@@ -168,69 +144,11 @@ func (r *DNSRecordReconciler) processDeletion(
 	logger.Info("Processing deletion of DNSRecord")
 	defer logger.Info("Deletion of DNSRecord processed")
 
-	// Remove the CronJob if it exists.
-	cronJob := new(batchv1.CronJob)
-	if err := r.Get(
-		ctx,
-		types.NamespacedName{
-			Namespace: dnsRecord.Status.CronJobRef.Namespace,
-			Name:      dnsRecord.Status.CronJobRef.Name,
-		},
-		cronJob,
-	); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			logger.Error(err, "Failed to get CronJob for DNSRecord")
-			r.Recorder.Eventf(
-				dnsRecord,
-				"Warning",
-				"CronJobGetFailed",
-				"Failed to get CronJob %s/%s for DNSRecord %s: %v",
-				dnsRecord.Status.CronJobRef.Namespace,
-				dnsRecord.Status.CronJobRef.Name,
-				dnsRecord.Name,
-				err,
-			)
-			return ctrl.Result{}, fmt.Errorf(
-				"failed to get CronJob %s/%s for DNSRecord %s, %w",
-				dnsRecord.Status.CronJobRef.Namespace,
-				dnsRecord.Status.CronJobRef.Name,
-				dnsRecord.Name,
-				err,
-			)
-		}
-	}
-
-	if cronJob != nil && !cronJob.CreationTimestamp.IsZero() && cronJob.DeletionTimestamp.IsZero() {
-		logger.Info("Deleting CronJob for DNSRecord", "CronJob", cronJob.Name)
-		if err := r.Delete(ctx, cronJob); err != nil {
-			logger.Error(err, "Failed to delete CronJob for DNSRecord", "CronJob", cronJob.Name)
-			r.Recorder.Eventf(
-				dnsRecord,
-				"Warning",
-				"CronJobDeleteFailed",
-				"Failed to delete CronJob %s for DNSRecord %s: %v",
-				cronJob.Name,
-				dnsRecord.Name,
-				err,
-			)
-			return ctrl.Result{}, fmt.Errorf("failed to delete CronJob %s for DNSRecord %s, %w", cronJob.Name, dnsRecord.Name, err)
-		}
-		logger.Info("CronJob deleted successfully", "CronJob", cronJob.Name)
-		r.Recorder.Eventf(
-			dnsRecord,
-			"Normal",
-			"CronJobDeleted",
-			"CronJob %s deleted successfully for DNSRecord %s",
-			cronJob.Name,
-			dnsRecord.Name,
-		)
-	}
-
 	// Remove the finalizer from the DNSRecord
 	if ctrlutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
 		logger.Info("Removing finalizer from DNSRecord")
-
 		dnsRecordCopy := dnsRecord.DeepCopy()
+
 		if !ctrlutil.RemoveFinalizer(dnsRecordCopy, DNSRecordFinalizer) {
 			logger.Error(nil, "Failed to remove finalizer from DNSRecord")
 			r.Recorder.Eventf(
@@ -268,137 +186,31 @@ func (r *DNSRecordReconciler) setupCronJob(ctx context.Context, dnsRecord *duckd
 	logger.Info("Setting up CronJob for DNSRecord")
 	defer logger.Info("CronJob setup completed for DNSRecord")
 
-	// Check if the secret exists for the DuckDNS token
-	secret := &corev1.Secret{}
-	secretKey := types.NamespacedName{
-		Name:      dnsRecord.Spec.SecretRef.Name,
-		Namespace: dnsRecord.Spec.SecretRef.Namespace,
-	}
-	if err := r.Get(ctx, secretKey, secret); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			logger.Error(err, "Failed to get Secret for DNSRecord", "Secret", secretKey)
-			r.Recorder.Eventf(
-				dnsRecord,
-				"Warning",
-				"SecretGetFailed",
-				"Failed to get Secret %s for DNSRecord %s: %v",
-				secretKey.String(),
-				dnsRecord.Name,
-				err,
-			)
-			return fmt.Errorf("failed to get Secret %s for DNSRecord %s, %w", secretKey.String(), dnsRecord.Name, err)
-		}
-		logger.Info("Secret not found, cannot proceed with CronJob setup")
-		r.Recorder.Eventf(
-			dnsRecord,
-			"Warning",
-			"SecretNotFound",
-			"Secret %s not found for DNSRecord %s, cannot proceed with CronJob setup",
-			secretKey.String(),
-			dnsRecord.Name,
-		)
-		return fmt.Errorf("secret %s not found for DNSRecord %s", secretKey.String(), dnsRecord.Name)
+	if err := r.createCronJobServiceAccount(ctx, dnsRecord); err != nil {
+		return fmt.Errorf("failed to create CronJob ServiceAccount, %w", err)
 	}
 
-	domains := r.domainsToString(dnsRecord.Spec.Domains)
-	duckDNSUpdateURL, err := r.DuckDNSClient.UpdateURL(duckdns.Params{
-		Domains: domains,
-		IPv4:    dnsRecord.Spec.IPv4Address,
-		IPv6:    dnsRecord.Spec.IPv6Address,
-		Clear:   dnsRecord.Spec.Clear,
-		Txt:     dnsRecord.Spec.Txt,
-		Token: func(secretData map[string][]byte) string {
-			token := string(secretData[dnsRecord.Spec.SecretRef.Key])
-			logger.Info("Token found in secret, proceeding with CronJob setup", "token", token)
-			return token
-		}(secret.Data),
-	})
+	if err := r.createCronJobRole(ctx, dnsRecord); err != nil {
+		return fmt.Errorf("failed to create CronJob Role, %w", err)
+	}
 
-	logger.V(1).Info("Generated update URL for DuckDNS", "URL", duckDNSUpdateURL)
+	if err := r.createCronJobRoleBinding(ctx, dnsRecord); err != nil {
+		return fmt.Errorf("failed to create CronJob RoleBinding, %w", err)
+	}
 
+	cron, err := r.createCronJob(ctx, dnsRecord)
 	if err != nil {
-		logger.Error(err, "Failed to generate update URL for DuckDNS")
-		r.Recorder.Eventf(
-			dnsRecord,
-			"Warning",
-			"UpdateURLGenerationFailed",
-			"Failed to generate update URL for DuckDNS: %v",
-			err,
-		)
-		return fmt.Errorf("failed to generate update URL for DuckDNS, %w", err)
+		return fmt.Errorf("failed to create CronJob for DNSRecord %s, %w", dnsRecord.Name, err)
 	}
-
-	cronJobName := fmt.Sprintf("%s-cronjob", dnsRecord.Name)
-	cronJob := &batchv1.CronJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cronJobName,
-			Namespace: dnsRecord.Namespace,
-		},
-		Spec: batchv1.CronJobSpec{
-			Schedule:                   dnsRecord.Spec.CronJob.Schedule,
-			FailedJobsHistoryLimit:     proto.Int32(2),
-			SuccessfulJobsHistoryLimit: proto.Int32(2),
-			ConcurrencyPolicy:          batchv1.ForbidConcurrent,
-			JobTemplate: batchv1.JobTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      cronJobName,
-					Namespace: dnsRecord.Namespace,
-				},
-				Spec: batchv1.JobSpec{
-					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      cronJobName,
-							Namespace: dnsRecord.Namespace,
-						},
-						Spec: corev1.PodSpec{
-							RestartPolicy: corev1.RestartPolicyOnFailure,
-							Containers: []corev1.Container{
-								{
-									Name:  fmt.Sprintf("duckdns-updater-%s", dnsRecord.Name),
-									Image: "alpine:3.21.3",
-									Command: []string{
-										"/bin/sh",
-										"-c",
-										`apk --no-cache add curl && echo "Updating DuckDNS record for ` + domains + `" && curl -s "` + duckDNSUpdateURL + `"`,
-									},
-								},
-							},
-						},
-					},
-					BackoffLimit: proto.Int32(CronBackoffLimit),
-				},
-			},
-		},
-	}
-
-	if err := r.Create(ctx, cronJob); err != nil {
-		logger.Error(err, "Failed to create CronJob for DNSRecord", "CronJob", cronJobName)
-		r.Recorder.Eventf(
-			dnsRecord,
-			"Warning",
-			"CronJobCreationFailed",
-			"Failed to create CronJob %s for DNSRecord %s: %v",
-			cronJobName,
-			dnsRecord.Name,
-			err,
-		)
-		return fmt.Errorf("failed to create CronJob %s for DNSRecord %s, %w", cronJobName, dnsRecord.Name, err)
-	}
-
-	logger.Info("CronJob created successfully", "CronJob", cronJobName)
-	r.Recorder.Eventf(
-		dnsRecord,
-		"Normal",
-		"CronJobCreated",
-		"CronJob %s created successfully",
-		cronJobName,
-	)
 
 	dnsRecordCopy := dnsRecord.DeepCopy()
-	cronJobRef := client.ObjectKeyFromObject(cronJob)
+	cronJobRef := client.ObjectKeyFromObject(cron)
 	dnsRecordCopy.Status.CronJobRef = duckdnsv1alpha1.CronJobRef{
 		Namespace: cronJobRef.Namespace,
 		Name:      cronJobRef.Name,
+	}
+	if dnsRecordCopy.Status.Conditions == nil {
+		dnsRecordCopy.Status.Conditions = []metav1.Condition{}
 	}
 	metamachinery.SetStatusCondition(&dnsRecordCopy.Status.Conditions, metav1.Condition{
 		Message:            "CronJob created successfully",
@@ -421,22 +233,201 @@ func (r *DNSRecordReconciler) setupCronJob(ctx context.Context, dnsRecord *duckd
 		return fmt.Errorf("failed to update status for DNSRecord with CronJob creation, %w", err)
 	}
 
+	logger.Info("CronJob reference added to DNS record successfully", "CronJob", cron.GetName())
+
 	return nil
 }
 
-// domainsToString converts a slice of domain names to a comma-separated string.
-func (r *DNSRecordReconciler) domainsToString(domains []string) string {
-	if len(domains) == 0 {
-		return ""
-	}
-	result := ""
-	for _, domain := range domains {
-		if result != "" {
-			result += ","
+func (r *DNSRecordReconciler) createCronJobServiceAccount(
+	ctx context.Context,
+	dnsRecord *duckdnsv1alpha1.DNSRecord,
+) error {
+	logger := logf.FromContext(ctx)
+	logger.Info("Creating service account for CronJob of a DNSRecord")
+	defer logger.Info("Service account creation for CronJob is completed")
+
+	serviceAccount := cronJobServiceAccount(dnsRecord)
+	if err := r.Create(ctx, serviceAccount); err != nil {
+		if client.IgnoreAlreadyExists(err) != nil {
+			logger.Error(
+				err,
+				"Failed to create CronJob ServiceAccount for DNSRecord",
+				"ServiceAccount",
+				serviceAccount.GetName(),
+			)
+			r.Recorder.Eventf(
+				dnsRecord,
+				"Warning",
+				"CronJobServiceAccountCreationFailed",
+				"Failed to create CronJob ServiceAccount %s for DNSRecord %s: %v",
+				serviceAccount.GetName(),
+				dnsRecord.Name,
+				err,
+			)
+			return fmt.Errorf("failed to create CronJob ServiceAccount, %w", err)
 		}
-		result += domain
+		r.Recorder.Eventf(
+			dnsRecord,
+			"Normal",
+			"CronJobServiceAccountAlreadyExists",
+			"CronJob ServiceAccount %s already exists",
+			serviceAccount.GetName(),
+		)
+		return nil
 	}
-	return result
+	r.Recorder.Eventf(
+		dnsRecord,
+		"Normal",
+		"CronJobServiceAccountCreated",
+		"CronJob ServiceAccount %s created successfully",
+		serviceAccount.GetName(),
+	)
+	logger.Info("Service account created successfully", "ServiceAccount", serviceAccount.GetName())
+	return nil
+}
+
+func (r *DNSRecordReconciler) createCronJobRole(
+	ctx context.Context,
+	dnsRecord *duckdnsv1alpha1.DNSRecord,
+) error {
+	logger := logf.FromContext(ctx)
+	logger.Info("Creating role for CronJob of a DNSRecord")
+	defer logger.Info("Role creation for CronJob is completed")
+
+	role := cronJobRole(dnsRecord)
+	if err := r.Create(ctx, role); err != nil {
+		if client.IgnoreAlreadyExists(err) != nil {
+			logger.Error(
+				err,
+				"Failed to create CronJob Role for DNSRecord",
+				"Role",
+				role.GetName(),
+			)
+			r.Recorder.Eventf(
+				dnsRecord,
+				"Warning",
+				"CronJobRoleCreationFailed",
+				"Failed to create CronJob Role %s for DNSRecord %s: %v",
+				role.GetName(),
+				dnsRecord.Name,
+				err,
+			)
+			return fmt.Errorf("failed to create CronJob Role, %w", err)
+		}
+		r.Recorder.Eventf(
+			dnsRecord,
+			"Normal",
+			"CronJobRoleAlreadyExists",
+			"CronJob Role %s already exists",
+			role.GetName(),
+		)
+		return nil
+	}
+	r.Recorder.Eventf(
+		dnsRecord,
+		"Normal",
+		"CronJobRoleCreated",
+		"CronJob Role %s created successfully",
+		role.GetName(),
+	)
+	logger.Info("Role created successfully", "Role", role.GetName())
+	return nil
+}
+
+func (r *DNSRecordReconciler) createCronJobRoleBinding(
+	ctx context.Context,
+	dnsRecord *duckdnsv1alpha1.DNSRecord,
+) error {
+	logger := logf.FromContext(ctx)
+	logger.Info("Creating role binding for CronJob of a DNSRecord")
+	defer logger.Info("Role binding creation for CronJob is completed")
+
+	roleBinding := cronJobRoleBinding(dnsRecord)
+	if err := r.Create(ctx, roleBinding); err != nil {
+		if client.IgnoreAlreadyExists(err) != nil {
+			logger.Error(
+				err,
+				"Failed to create CronJob RoleBinding for DNSRecord",
+				"RoleBinding",
+				roleBinding.GetName(),
+			)
+			r.Recorder.Eventf(
+				dnsRecord,
+				"Warning",
+				"CronJobRoleBindingCreationFailed",
+				"Failed to create CronJob RoleBinding %s for DNSRecord %s: %v",
+				roleBinding.GetName(),
+				dnsRecord.Name,
+				err,
+			)
+			return fmt.Errorf("failed to create CronJob RoleBinding, %w", err)
+		}
+		r.Recorder.Eventf(
+			dnsRecord,
+			"Normal",
+			"CronJobRoleBindingAlreadyExists",
+			"CronJob RoleBinding %s already exists",
+			roleBinding.GetName(),
+		)
+		return nil
+	}
+	r.Recorder.Eventf(
+		dnsRecord,
+		"Normal",
+		"CronJobRoleBindingCreated",
+		"CronJob RoleBinding %s created successfully",
+		roleBinding.GetName(),
+	)
+	logger.Info("Role binding created successfully", "RoleBinding", roleBinding.GetName())
+	return nil
+}
+
+func (r *DNSRecordReconciler) createCronJob(
+	ctx context.Context,
+	dnsRecord *duckdnsv1alpha1.DNSRecord,
+) (*batchv1.CronJob, error) {
+	logger := logf.FromContext(ctx)
+	logger.Info("Creating CronJob for DNSRecord")
+	defer logger.Info("CronJob creation for DNSRecord is completed")
+
+	cron := cronJob(dnsRecord)
+	if err := r.Create(ctx, cron); err != nil {
+		if client.IgnoreAlreadyExists(err) != nil {
+			logger.Error(err, "Failed to create CronJob for DNSRecord", "CronJob", cron.GetName())
+			r.Recorder.Eventf(
+				dnsRecord,
+				"Warning",
+				"CronJobCreationFailed",
+				"Failed to create CronJob %s for DNSRecord %s: %v",
+				cron.GetName(),
+				dnsRecord.Name,
+				err,
+			)
+			return nil, fmt.Errorf(
+				"failed to create CronJob %s for DNSRecord %s, %w",
+				cron.GetName(),
+				dnsRecord.Name,
+				err,
+			)
+		}
+		r.Recorder.Eventf(
+			dnsRecord,
+			"Normal",
+			"CronJobAlreadyExists",
+			"CronJob %s already exists",
+			cron.GetName(),
+		)
+		return cron, nil
+	}
+	r.Recorder.Eventf(
+		dnsRecord,
+		"Normal",
+		"CronJobCreated",
+		"CronJob %s created successfully",
+		cron.GetName(),
+	)
+	logger.Info("CronJob created successfully", "CronJob", cron.GetName())
+	return cron, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

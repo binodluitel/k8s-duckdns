@@ -185,10 +185,16 @@ To automatically update the DuckDNS domain name with your public IP address, dep
 make docker-build
 ```
 
-Load the image into the kind cluster:
+Load the controller image into the kind cluster:
 
 ```shell
 kind load --name duckdns docker-image controller:latest
+```
+
+Load the dns-sync image for CronJob into the kind cluster:
+
+```shell
+kind load --name duckdns docker-image dns-sync:latest
 ```
 
 Finally, deploy the controller:

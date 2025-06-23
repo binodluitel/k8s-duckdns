@@ -2,6 +2,14 @@ package duckdns
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+const (
+	// DNSRecordOrlKorrect is the string returned by DuckDNS when the DNS record is updated successfully.
+	DNSRecordOrlKorrect = "OK"
 )
 
 // Client for interacting with the DuckDNS service
@@ -96,4 +104,20 @@ func (ddc *Client) UpdateURL(params Params) (string, error) {
 	}
 
 	return url, nil
+}
+
+func (ddc *Client) ExecuteUpdateRequest(updateURL string) (string, error) {
+	resp, err := http.Get(updateURL)
+	if err != nil {
+		return "", fmt.Errorf("error executing update request: %w", err)
+	}
+	func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading response body: %w", err)
+	}
+	if !strings.HasPrefix(string(body), DNSRecordOrlKorrect) {
+		return "", fmt.Errorf("%s", body)
+	}
+	return string(body), nil
 }

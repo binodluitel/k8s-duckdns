@@ -1,5 +1,8 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+CONTROLLER_IMG ?= controller:latest
+
+# Image URL to use DNS synchronizer building/pushing image targets
+DNS_SYNC_IMG ?= dns-sync:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -103,34 +106,55 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+docker-build: docker-build-controller docker-build-dns-sync ## Build all docker images.
+
+.PHONY: docker-build-controller
+docker-build-controller: ## Build docker image with the manager.
+	$(CONTAINER_TOOL) build -t ${CONTROLLER_IMG} .
+
+.PHONY: docker-build-dns-sync
+docker-build-dns-sync: ## Build docker image with the dns-sync.
+	$(CONTAINER_TOOL) build -t ${DNS_SYNC_IMG} -f Dockerfile.dns-sync .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+	$(CONTAINER_TOOL) push ${CONTROLLER_IMG}
+	$(CONTAINER_TOOL) push ${DNS_SYNC_IMG}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
-# architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
+# architectures. (i.e. make docker-buildx CONTROLLER_IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
 # - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
+# - be able to push the image to your registry (i.e. if you do not set a valid value via CONTROLLER_IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
-docker-buildx: ## Build and push docker image for the manager for cross-platform support
+docker-buildx: docker-buildx-controller docker-build-dns-sync ## Build and push all docker images for cross-platform support
+
+.PHONY: docker-buildx-controller
+docker-buildx-controller: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name k8s-duckdns-builder
 	$(CONTAINER_TOOL) buildx use k8s-duckdns-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONTROLLER_IMG} -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm k8s-duckdns-builder
 	rm Dockerfile.cross
+
+.PHONY: docker-buildx-dns-sync
+docker-buildx-dns-sync: ## Build docker image for the DNS synchronizer.
+	# copy existing Dockerfile.dns-sync and insert --platform=${BUILDPLATFORM} into Dockerfile.dns-sync.cross, and preserve the original Dockerfile.dns-sync
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile.dns-sync > Dockerfile.dns-sync.cross
+	- $(CONTAINER_TOOL) buildx create --name dns-sync-builder
+	$(CONTAINER_TOOL) buildx use dns-sync-builder
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${DNS_SYNC_IMG} -f Dockerfile.dns-sync.cross .
+	- $(CONTAINER_TOOL) buildx rm dns-sync-builder
+	rm Dockerfile.dns-sync.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLLER_IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
 ##@ Deployment
@@ -149,7 +173,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLLER_IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy

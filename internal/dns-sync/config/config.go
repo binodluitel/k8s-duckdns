@@ -9,16 +9,26 @@ import (
 // prefix is the app config env var prefix
 const prefix = ""
 
-// Config contains configuration parameters
+// Config contains configuration parameters for the DNS synchronizer CronJob application.
 type Config struct {
-	DuckDNS DuckDNS `envconfig:"duckdns"`
+	DuckDNS   DuckDNS   `envconfig:"duckdns"`
+	DNSRecord DNSRecord `envconfig:"dnsrecord"`
 }
 
 // DuckDNS represents the configuration settings required to interact with the DuckDNS service.
 type DuckDNS struct {
 	Protocol string `envconfig:"protocol" default:"https"`
 	Domain   string `envconfig:"domain" default:"www.duckdns.org"`
-	Verbose  bool   `envconfig:"verbose" default:"true"`
+	Verbose  bool   `envconfig:"verbose" default:"false"`
+}
+
+// DNSRecord represents the configuration settings required to manage a DNS record in Kubernetes.
+type DNSRecord struct {
+	// Name is Kubernetes name of a DNSRecord resource
+	Name string `envconfig:"name"`
+
+	// Namespace is the Kubernetes namespace of a DNSRecord resource
+	Namespace string `envconfig:"namespace"`
 }
 
 // MustGet returns config after initializing it or panics

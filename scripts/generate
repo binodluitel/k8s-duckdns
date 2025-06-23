@@ -35,12 +35,25 @@ def main():
         "--ipv6", default="", help="Use IPv6 address (optional)"
     )
     dns_record_parser.add_argument(
+        "--auto-update-ipv6", action="store_true", help="Automatically update IPv6 address"
+    )
+    dns_record_parser.add_argument(
         "--clear", action="store_true", help="Set clear to true (default: false)"
     )
     dns_record_parser.add_argument(
         "--schedule",
-        default="*/5 * * * *",
-        help="Cron schedule (default: every 5 minutes)",
+        default="*/1 * * * *",
+        help="Cron Job schedule (default: every 1 minutes)",
+    )
+    dns_record_parser.add_argument(
+        "--cron-image",
+        default="dns-sync:latest",
+        help="Cron Job image (default: dns-sync:latest)",
+    )
+    dns_record_parser.add_argument(
+        "--cron-image-pull-policy",
+        default="IfNotPresent",
+        help="Cron Job image pull policy (default: IfNotPresent)",
     )
     dns_record_parser.add_argument(
         "--secret-namespace",
@@ -106,6 +119,8 @@ def generate_dns_record(args):
             "clear": args.clear,
             "cronJob": {
                 "schedule": args.schedule,
+                "image": args.cron_image,
+                "imagePullPolicy": args.cron_image_pull_policy,
             },
             "secretRef": {
                 "name": args.secret_name if hasattr(args, "secret_name") else "",
@@ -117,6 +132,8 @@ def generate_dns_record(args):
 
     if ipv6:
         dns_record["spec"]["ipv6Address"] = ipv6
+        if args.auto_update_ipv6:
+            dns_record["spec"]["autoUpdateIPv6"] = args.auto_update_ipv6
 
     with open(args.output, "w") as f:
         yaml.dump(dns_record, f, default_flow_style=False)
